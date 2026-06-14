@@ -9,6 +9,20 @@ The format is based on **[Keep a Changelog](https://keepachangelog.com/en/1.1.0/
 ## [Unreleased]
 
 - **Added**
+  - (placeholder)
+
+- **Changed**
+  - (placeholder)
+
+- **Fixed**
+  - (placeholder)
+
+- **Security**
+  - (placeholder)
+
+## [0.1.2] - 2026-06-14
+
+- **Added**
   - Added `@plasius/scene-animation` contracts for palette manifests, clips, and playback state.
   - Added validation and resolution helpers for deterministic clip selection and playlist composition.
 
@@ -23,4 +37,7 @@ The format is based on **[Keep a Changelog](https://keepachangelog.com/en/1.1.0/
 
 ---
 
-[Unreleased]: https://github.com/Plasius-LTD/scene-animation/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/Plasius-LTD/scene-animation/compare/v0.1.2...HEAD
+
+
+[0.1.2]: https://github.com/Plasius-LTD/scene-animation/releases/tag/v0.1.2
