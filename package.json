@@ -1,6 +1,6 @@
 {
   "name": "@plasius/scene-animation",
-  "version": "0.1.1",
+  "version": "0.1.3",
   "description": "Scene animation palette manifests, clip contracts, and playback state helpers",
   "type": "module",
   "sideEffects": false,
