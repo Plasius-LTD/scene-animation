@@ -9,10 +9,13 @@ The format is based on **[Keep a Changelog](https://keepachangelog.com/en/1.1.0/
 ## [Unreleased]
 
 - **Added**
-  - (placeholder)
+  - Added adventure playback manifest contracts for scripted beats, clip refs,
+    root-motion policy, route points, lagged camera follow, and deterministic
+    prop layouts.
 
 - **Changed**
-  - (placeholder)
+  - Expanded validation coverage for adventure clip ids, beat ordering,
+    durations, path continuity, camera defaults, and prop seed bounds.
 
 - **Fixed**
   - (placeholder)
