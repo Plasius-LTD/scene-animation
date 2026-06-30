@@ -1,10 +1,15 @@
 import { describe, expect, it } from "vitest";
 import {
   SCENE_ANIMATION_PALETTE_LOADER_FLAG_ID,
+  SCENE_ANIMATION_ADVENTURE_FLAG_ID,
+  SCENE_ANIMATION_ADVENTURE_SCHEMA_VERSION,
   SCENE_ANIMATION_SCHEMA_VERSION,
+  createSceneAnimationAdventureManifest,
   createSceneAnimationManifest,
   resolveSceneAnimationClip,
+  type SceneAnimationAdventureManifest,
   type SceneAnimationManifest,
+  validateSceneAnimationAdventureManifest,
   validateSceneAnimationManifest,
   validateSceneAnimationPlaybackState,
   resolveSceneAnimationPlaylist,
@@ -29,6 +34,75 @@ const baseManifest: SceneAnimationManifest = {
   ],
 };
 
+const farmAdventureManifest: SceneAnimationAdventureManifest = {
+  schemaVersion: SCENE_ANIMATION_ADVENTURE_SCHEMA_VERSION,
+  adventureId: "farm-adventure",
+  characterId: "peasant-girl",
+  modelUrl: "/gpu-demo/animation-models/peasant-girl/peasant-girl.glb",
+  clips: [
+    { id: "female-basic-locomotion-idle", category: "idle", rootTranslation: false },
+    { id: "female-basic-locomotion-walking", category: "locomotion", rootTranslation: true },
+    { id: "farming-dig-and-plant-seeds", category: "action" },
+    { id: "farming-watering", category: "action" },
+    { id: "farming-pick-fruit", category: "action" },
+    { id: "female-basic-locomotion-jump", category: "locomotion", rootTranslation: true },
+    { id: "gestures-basic-happy-hand-gesture", category: "modifier" },
+  ],
+  route: [
+    { id: "gate", position: [0, 0, 0], arriveMs: 0 },
+    { id: "crop-row", position: [3, 0, 1], arriveMs: 3200 },
+    { id: "ditch", position: [5, 0, 1.5], arriveMs: 9200 },
+    { id: "cart", position: [7, 0, 0], arriveMs: 12800 },
+  ],
+  beats: [
+    {
+      id: "idle-at-gate",
+      order: 0,
+      kind: "idle",
+      clipId: "female-basic-locomotion-idle",
+      durationMs: 1200,
+      pathPointId: "gate",
+      rootMotion: "in-place",
+      blend: { inMs: 0, outMs: 240 },
+    },
+    {
+      id: "walk-to-crops",
+      order: 1,
+      kind: "locomotion",
+      clipId: "female-basic-locomotion-walking",
+      durationMs: 3200,
+      pathPointId: "crop-row",
+      rootMotion: "prefer-root-motion",
+      blend: { inMs: 180, outMs: 220 },
+    },
+    {
+      id: "dig-and-plant",
+      order: 2,
+      kind: "action",
+      clipId: "farming-dig-and-plant-seeds",
+      durationMs: 1800,
+      pathPointId: "crop-row",
+      rootMotion: "in-place",
+      blend: { inMs: 160, outMs: 160 },
+    },
+  ],
+  camera: {
+    mode: "lagged-follow",
+    cubicBezier: [0.22, 0.61, 0.36, 1],
+    lagMs: 240,
+    lookAheadMs: 320,
+    offset: [0, 2.4, 5.5],
+  },
+  props: {
+    seed: 12_084,
+    bounds: {
+      min: [-8, -1, -8],
+      max: [8, 4, 8],
+    },
+    kinds: ["crop-row", "fence-segment", "crate", "cart", "small-tree", "path-marker"],
+  },
+};
+
 describe("scene animation manifest validation", () => {
   it("accepts valid manifests", () => {
     const result = validateSceneAnimationManifest(baseManifest);
@@ -39,6 +113,12 @@ describe("scene animation manifest validation", () => {
   it("exports parent rollout flag", () => {
     expect(SCENE_ANIMATION_PALETTE_LOADER_FLAG_ID).toBe(
       "scene.animation.palette-loader.enabled",
+    );
+  });
+
+  it("exports animation adventure rollout flag", () => {
+    expect(SCENE_ANIMATION_ADVENTURE_FLAG_ID).toBe(
+      "gpu-demo.animation-adventure.enabled",
     );
   });
 
@@ -319,6 +399,330 @@ describe("scene animation manifest validation", () => {
     expect(playlist.valid).toBe(false);
     expect(playlist.issues).toEqual([
       expect.objectContaining({ code: "required", path: "$.clips" }),
+    ]);
+  });
+});
+
+describe("scene animation adventure manifest validation", () => {
+  it("rejects missing adventure manifests", () => {
+    const invalid = validateSceneAnimationAdventureManifest(undefined);
+
+    expect(invalid.valid).toBe(false);
+    expect(invalid.issues).toEqual([
+      expect.objectContaining({ code: "required", path: "$" }),
+    ]);
+  });
+
+  it("accepts the farm adventure manifest contract", () => {
+    const result = validateSceneAnimationAdventureManifest(farmAdventureManifest);
+
+    expect(result.valid).toBe(true);
+    expect(result.value?.camera).toEqual(
+      expect.objectContaining({
+        mode: "lagged-follow",
+        cubicBezier: [0.22, 0.61, 0.36, 1],
+        lagMs: 240,
+        lookAheadMs: 320,
+      }),
+    );
+  });
+
+  it("creates canonical adventure manifests", () => {
+    const created = createSceneAnimationAdventureManifest(farmAdventureManifest);
+
+    expect(created.adventureId).toBe("farm-adventure");
+  });
+
+  it("throws with validation details when creating invalid adventure manifests", () => {
+    expect(() =>
+      createSceneAnimationAdventureManifest({
+        ...farmAdventureManifest,
+        beats: [],
+      }),
+    ).toThrow("adventure manifest must include scripted beats");
+  });
+
+  it("reports invalid top-level adventure fields and missing sections", () => {
+    const invalid = validateSceneAnimationAdventureManifest({
+      schemaVersion: "0.1.0",
+      adventureId: "Farm Adventure",
+      characterId: 42,
+      modelUrl: " ",
+      clips: [],
+      route: [],
+      beats: [],
+      camera: null,
+      props: null,
+    });
+
+    expect(invalid.valid).toBe(false);
+    expect(invalid.issues).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ code: "invalid-value", path: "$.schemaVersion" }),
+        expect.objectContaining({ code: "invalid-id", path: "$.adventureId" }),
+        expect.objectContaining({ code: "invalid-type", path: "$.characterId" }),
+        expect.objectContaining({ code: "invalid-type", path: "$.modelUrl" }),
+        expect.objectContaining({ code: "required", path: "$.clips" }),
+        expect.objectContaining({ code: "required", path: "$.route" }),
+        expect.objectContaining({ code: "required", path: "$.beats" }),
+        expect.objectContaining({ code: "required", path: "$.camera" }),
+        expect.objectContaining({ code: "required", path: "$.props" }),
+      ]),
+    );
+  });
+
+  it("rejects malformed and duplicate adventure clip references", () => {
+    const invalid = validateSceneAnimationAdventureManifest({
+      ...farmAdventureManifest,
+      clips: [
+        null,
+        {
+          id: "female-basic-locomotion-idle",
+          category: "idle",
+        },
+        {
+          id: "female-basic-locomotion-idle",
+          category: "wrong",
+        },
+      ],
+    });
+
+    expect(invalid.valid).toBe(false);
+    expect(invalid.issues).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ code: "required", path: "$.clips[0]" }),
+        expect.objectContaining({ code: "duplicate-id", path: "$.clips[2].id" }),
+        expect.objectContaining({ code: "invalid-value", path: "$.clips[2].category" }),
+      ]),
+    );
+  });
+
+  it("rejects missing clip references from beats", () => {
+    const invalid = validateSceneAnimationAdventureManifest({
+      ...farmAdventureManifest,
+      beats: [
+        {
+          ...farmAdventureManifest.beats[0]!,
+          clipId: "missing-clip",
+        },
+      ],
+    });
+
+    expect(invalid.valid).toBe(false);
+    expect(invalid.issues).toEqual([
+      expect.objectContaining({ code: "missing-reference", path: "$.beats[0].clipId" }),
+    ]);
+  });
+
+  it("rejects non-continuous path timing and repeated positions", () => {
+    const invalid = validateSceneAnimationAdventureManifest({
+      ...farmAdventureManifest,
+      route: [
+        farmAdventureManifest.route[0],
+        {
+          id: "bad-point",
+          position: farmAdventureManifest.route[0]!.position,
+          arriveMs: 0,
+        },
+      ],
+    });
+
+    expect(invalid.valid).toBe(false);
+    expect(invalid.issues).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ code: "invalid-value", path: "$.route[1].position" }),
+        expect.objectContaining({ code: "invalid-value", path: "$.route[1].arriveMs" }),
+      ]),
+    );
+  });
+
+  it("rejects malformed route points and duplicate ids", () => {
+    const invalid = validateSceneAnimationAdventureManifest({
+      ...farmAdventureManifest,
+      route: [
+        null,
+        {
+          id: "gate",
+          position: [0, 0, 0],
+          arriveMs: 0,
+        },
+        {
+          id: "gate",
+          position: [1, Number.NaN, 0],
+          arriveMs: Number.POSITIVE_INFINITY,
+        },
+      ],
+    });
+
+    expect(invalid.valid).toBe(false);
+    expect(invalid.issues).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ code: "required", path: "$.route[0]" }),
+        expect.objectContaining({ code: "duplicate-id", path: "$.route[2].id" }),
+        expect.objectContaining({ code: "invalid-type", path: "$.route[2].position" }),
+        expect.objectContaining({ code: "invalid-value", path: "$.route[2].arriveMs" }),
+      ]),
+    );
+  });
+
+  it("rejects malformed beat ids, kinds, path references, root motion, and blends", () => {
+    const invalid = validateSceneAnimationAdventureManifest({
+      ...farmAdventureManifest,
+      beats: [
+        null,
+        {
+          id: "idle-at-gate",
+          order: -1,
+          kind: "wrong",
+          clipId: "Bad Clip",
+          durationMs: 0,
+          pathPointId: "missing-point",
+          rootMotion: "teleport",
+          blend: {
+            inMs: -1,
+            outMs: Number.NaN,
+          },
+        },
+        {
+          ...farmAdventureManifest.beats[0]!,
+          order: 2,
+        },
+      ],
+    });
+
+    expect(invalid.valid).toBe(false);
+    expect(invalid.issues).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ code: "required", path: "$.beats[0]" }),
+        expect.objectContaining({ code: "invalid-value", path: "$.beats[1].order" }),
+        expect.objectContaining({ code: "invalid-value", path: "$.beats[1].kind" }),
+        expect.objectContaining({ code: "invalid-id", path: "$.beats[1].clipId" }),
+        expect.objectContaining({ code: "invalid-value", path: "$.beats[1].durationMs" }),
+        expect.objectContaining({ code: "missing-reference", path: "$.beats[1].pathPointId" }),
+        expect.objectContaining({ code: "invalid-value", path: "$.beats[1].rootMotion" }),
+        expect.objectContaining({ code: "invalid-value", path: "$.beats[1].blend.inMs" }),
+        expect.objectContaining({ code: "invalid-value", path: "$.beats[1].blend.outMs" }),
+        expect.objectContaining({ code: "duplicate-id", path: "$.beats[2].id" }),
+      ]),
+    );
+  });
+
+  it("rejects missing beat blend windows", () => {
+    const invalid = validateSceneAnimationAdventureManifest({
+      ...farmAdventureManifest,
+      beats: [
+        {
+          ...farmAdventureManifest.beats[0]!,
+          blend: undefined,
+        },
+      ],
+    });
+
+    expect(invalid.valid).toBe(false);
+    expect(invalid.issues).toEqual([
+      expect.objectContaining({ code: "required", path: "$.beats[0].blend" }),
+    ]);
+  });
+
+  it("rejects stale camera defaults and out-of-bounds prop seeds", () => {
+    const invalid = validateSceneAnimationAdventureManifest({
+      ...farmAdventureManifest,
+      camera: {
+        ...farmAdventureManifest.camera,
+        lagMs: 120,
+      },
+      props: {
+        ...farmAdventureManifest.props,
+        seed: -1,
+      },
+    });
+
+    expect(invalid.valid).toBe(false);
+    expect(invalid.issues).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ code: "invalid-value", path: "$.camera.lagMs" }),
+        expect.objectContaining({ code: "invalid-value", path: "$.props.seed" }),
+      ]),
+    );
+  });
+
+  it("rejects invalid camera mode, bezier, look-ahead, and offset", () => {
+    const invalid = validateSceneAnimationAdventureManifest({
+      ...farmAdventureManifest,
+      camera: {
+        mode: "snap",
+        cubicBezier: [0.2, 0.6, 0.3, 1],
+        lagMs: 240,
+        lookAheadMs: 0,
+        offset: [0, Number.POSITIVE_INFINITY, 1],
+      },
+    });
+
+    expect(invalid.valid).toBe(false);
+    expect(invalid.issues).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ code: "invalid-value", path: "$.camera.mode" }),
+        expect.objectContaining({ code: "invalid-value", path: "$.camera.cubicBezier" }),
+        expect.objectContaining({ code: "invalid-value", path: "$.camera.lookAheadMs" }),
+        expect.objectContaining({ code: "invalid-type", path: "$.camera.offset" }),
+      ]),
+    );
+  });
+
+  it("rejects invalid prop bounds and kinds", () => {
+    const invalid = validateSceneAnimationAdventureManifest({
+      ...farmAdventureManifest,
+      props: {
+        seed: 12,
+        bounds: {
+          min: [2, 0, 0],
+          max: [1, 0, 3],
+        },
+        kinds: ["cart", "dragon"],
+      },
+    });
+
+    expect(invalid.valid).toBe(false);
+    expect(invalid.issues).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ code: "invalid-value", path: "$.props.bounds" }),
+        expect.objectContaining({ code: "invalid-value", path: "$.props.kinds[1]" }),
+      ]),
+    );
+  });
+
+  it("rejects missing prop bounds and kinds", () => {
+    const invalid = validateSceneAnimationAdventureManifest({
+      ...farmAdventureManifest,
+      props: {
+        seed: 12,
+      },
+    });
+
+    expect(invalid.valid).toBe(false);
+    expect(invalid.issues).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ code: "required", path: "$.props.bounds" }),
+        expect.objectContaining({ code: "required", path: "$.props.kinds" }),
+      ]),
+    );
+  });
+
+  it("rejects beats that are not in strict order", () => {
+    const invalid = validateSceneAnimationAdventureManifest({
+      ...farmAdventureManifest,
+      beats: [
+        farmAdventureManifest.beats[0],
+        {
+          ...farmAdventureManifest.beats[1]!,
+          order: 0,
+        },
+      ],
+    });
+
+    expect(invalid.valid).toBe(false);
+    expect(invalid.issues).toEqual([
+      expect.objectContaining({ code: "invalid-value", path: "$.beats[1].order" }),
     ]);
   });
 });
