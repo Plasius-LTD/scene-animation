@@ -4,6 +4,10 @@ import {
   type SceneAnimationClip,
   type SceneAnimationAdventureBeatKind,
   type SceneAnimationAdventureManifest,
+  type SceneAnimationAdventureMotionPolicy,
+  type SceneAnimationAdventureMovementMode,
+  type SceneAnimationAdventureMovementRequirementKind,
+  type SceneAnimationAdventureRenderMode,
   type SceneAnimationCameraFollowMode,
   type SceneAnimationPropKind,
   type SceneAnimationRootMotionPolicy,
@@ -28,11 +32,33 @@ const ADVENTURE_BEAT_KINDS = new Set<SceneAnimationAdventureBeatKind>([
 const ROOT_MOTION_POLICIES = new Set<SceneAnimationRootMotionPolicy>([
   "prefer-root-motion",
   "force-root-motion",
+  "root-authored",
   "route-driven",
   "in-place",
 ]);
 const CAMERA_FOLLOW_MODES = new Set<SceneAnimationCameraFollowMode>([
   "lagged-follow",
+  "cinematic-follow",
+]);
+const ADVENTURE_RENDER_MODES = new Set<SceneAnimationAdventureRenderMode>([
+  "canvas-2d",
+  "webgpu-pbr",
+]);
+const ADVENTURE_MOTION_POLICIES = new Set<SceneAnimationAdventureMotionPolicy>([
+  "legacy-compatible",
+  "root-motion-required",
+]);
+const MOVEMENT_MODES = new Set<SceneAnimationAdventureMovementMode>([
+  "stationary",
+  "root-authored",
+  "calibrated-in-place",
+  "jump",
+]);
+const MOVEMENT_REQUIREMENT_KINDS = new Set<SceneAnimationAdventureMovementRequirementKind>([
+  "stationary",
+  "travel",
+  "jump",
+  "root-authored",
 ]);
 const PROP_KINDS = new Set<SceneAnimationPropKind>([
   "crop-row",
@@ -43,6 +69,17 @@ const PROP_KINDS = new Set<SceneAnimationPropKind>([
   "path-marker",
 ]);
 const MAX_PROP_SEED = 0xffff_ffff;
+const ENVIRONMENT_ASSET_KINDS = new Set([
+  "terrain",
+  "path",
+  "crop-row",
+  "fence-segment",
+  "crate",
+  "cart",
+  "tree",
+  "marker",
+  "lighting-probe",
+]);
 
 function pushIssue(
   issues: SceneAnimationValidationIssue[],
@@ -114,6 +151,44 @@ function validateEnum<T extends string>(
     return false;
   }
 
+  return true;
+}
+
+function validateOptionalBoolean(
+  value: unknown,
+  path: string,
+  issues: SceneAnimationValidationIssue[],
+): boolean {
+  if (value === undefined || typeof value === "boolean") {
+    return true;
+  }
+
+  pushIssue(issues, {
+    code: "invalid-type",
+    path,
+    message: "Expected a boolean value.",
+  });
+  return false;
+}
+
+function validateOptionalFiniteNumber(
+  value: unknown,
+  path: string,
+  issues: SceneAnimationValidationIssue[],
+  label: string,
+  minimum = 0,
+): boolean {
+  if (value === undefined) {
+    return true;
+  }
+  if (!isFiniteNumber(value) || value < minimum) {
+    pushIssue(issues, {
+      code: "invalid-value",
+      path,
+      message: `${label} must be a finite number greater than or equal to ${minimum}.`,
+    });
+    return false;
+  }
   return true;
 }
 
@@ -370,7 +445,26 @@ export function validateSceneAnimationAdventureManifest(
     valid = false;
   }
 
+  if (value.renderMode !== undefined && !validateEnum(value.renderMode, ADVENTURE_RENDER_MODES, "$.renderMode", issues, "adventure render mode")) {
+    valid = false;
+  }
+
+  if (value.motionPolicy !== undefined && !validateEnum(value.motionPolicy, ADVENTURE_MOTION_POLICIES, "$.motionPolicy", issues, "adventure motion policy")) {
+    valid = false;
+  }
+
+  const professionalMode = value.renderMode === "webgpu-pbr" || value.motionPolicy === "root-motion-required";
+  if (professionalMode && value.motionPolicy !== "root-motion-required") {
+    pushIssue(issues, {
+      code: "invalid-value",
+      path: "$.motionPolicy",
+      message: "professional WebGPU animation manifests must require root motion.",
+    });
+    valid = false;
+  }
+
   const clipIds = new Set<string>();
+  const clipById = new Map<string, Record<string, unknown>>();
   if (!Array.isArray(value.clips) || value.clips.length === 0) {
     pushIssue(issues, {
       code: "required",
@@ -402,11 +496,85 @@ export function validateSceneAnimationAdventureManifest(
           valid = false;
         }
         clipIds.add(clipValue.id);
+        clipById.set(clipValue.id, clipValue);
       } else {
         valid = false;
       }
 
       if (!validateEnum(clipValue.category, ADVENTURE_BEAT_KINDS, `${path}.category`, issues, "clip category")) {
+        valid = false;
+      }
+
+      if (!validateOptionalBoolean(clipValue.rootTranslation, `${path}.rootTranslation`, issues)) {
+        valid = false;
+      }
+
+      const movementProfile = clipValue.movementProfile as Record<string, unknown> | undefined;
+      if (movementProfile !== undefined) {
+        if (!movementProfile || typeof movementProfile !== "object") {
+          pushIssue(issues, {
+            code: "invalid-type",
+            path: `${path}.movementProfile`,
+            message: "movementProfile must be an object.",
+          });
+          valid = false;
+        } else {
+          if (!validateEnum(movementProfile.motionMode, MOVEMENT_MODES, `${path}.movementProfile.motionMode`, issues, "movement mode")) {
+            valid = false;
+          }
+          for (const key of ["rootTranslationDistance", "durationMs", "expectedSpeed", "strideLength"] as const) {
+            if (!isFiniteNumber(movementProfile[key]) || (movementProfile[key] as number) < 0) {
+              pushIssue(issues, {
+                code: "invalid-value",
+                path: `${path}.movementProfile.${key}`,
+                message: "movement profile numeric values must be non-negative finite numbers.",
+              });
+              valid = false;
+            }
+          }
+          if (typeof movementProfile.loopable !== "boolean") {
+            pushIssue(issues, {
+              code: "invalid-type",
+              path: `${path}.movementProfile.loopable`,
+              message: "movement profile loopable must be boolean.",
+            });
+            valid = false;
+          }
+          if (typeof movementProfile.worldDisplacementAllowed !== "boolean") {
+            pushIssue(issues, {
+              code: "invalid-type",
+              path: `${path}.movementProfile.worldDisplacementAllowed`,
+              message: "movement profile worldDisplacementAllowed must be boolean.",
+            });
+            valid = false;
+          }
+          if (!validateOptionalBoolean(movementProfile.footSlideTolerancePassed, `${path}.movementProfile.footSlideTolerancePassed`, issues)) {
+            valid = false;
+          }
+          const verticalBounds = movementProfile.verticalBounds as Record<string, unknown>;
+          if (!verticalBounds || typeof verticalBounds !== "object" || !isFiniteNumber(verticalBounds.min) || !isFiniteNumber(verticalBounds.max) || verticalBounds.min > verticalBounds.max) {
+            pushIssue(issues, {
+              code: "invalid-value",
+              path: `${path}.movementProfile.verticalBounds`,
+              message: "movement profile vertical bounds must provide finite min and max values.",
+            });
+            valid = false;
+          }
+          if (!Array.isArray(movementProfile.footContactWindows)) {
+            pushIssue(issues, {
+              code: "invalid-type",
+              path: `${path}.movementProfile.footContactWindows`,
+              message: "movement profile footContactWindows must be an array.",
+            });
+            valid = false;
+          }
+        }
+      } else if (professionalMode) {
+        pushIssue(issues, {
+          code: "required",
+          path: `${path}.movementProfile`,
+          message: "professional animation manifests must include clip movement profiles.",
+        });
         valid = false;
       }
     }
@@ -591,6 +759,99 @@ export function validateSceneAnimationAdventureManifest(
         valid = false;
       }
 
+      const movementRequirement = beatValue.movementRequirement as Record<string, unknown> | undefined;
+      if (movementRequirement !== undefined) {
+        if (!movementRequirement || typeof movementRequirement !== "object") {
+          pushIssue(issues, {
+            code: "invalid-type",
+            path: `${path}.movementRequirement`,
+            message: "movementRequirement must be an object.",
+          });
+          valid = false;
+        } else {
+          if (!validateEnum(movementRequirement.kind, MOVEMENT_REQUIREMENT_KINDS, `${path}.movementRequirement.kind`, issues, "movement requirement")) {
+            valid = false;
+          }
+          if (!validateOptionalFiniteNumber(movementRequirement.distanceMeters, `${path}.movementRequirement.distanceMeters`, issues, "movement distance")) {
+            valid = false;
+          }
+          if (!validateOptionalFiniteNumber(movementRequirement.directionToleranceDegrees, `${path}.movementRequirement.directionToleranceDegrees`, issues, "direction tolerance")) {
+            valid = false;
+          }
+          if (!validateOptionalFiniteNumber(movementRequirement.minSpeed, `${path}.movementRequirement.minSpeed`, issues, "minimum speed")) {
+            valid = false;
+          }
+          if (!validateOptionalFiniteNumber(movementRequirement.maxSpeed, `${path}.movementRequirement.maxSpeed`, issues, "maximum speed")) {
+            valid = false;
+          }
+          if (movementRequirement.loopPolicy !== undefined && !["single", "loop-to-distance", "clip-duration"].includes(String(movementRequirement.loopPolicy))) {
+            pushIssue(issues, {
+              code: "invalid-value",
+              path: `${path}.movementRequirement.loopPolicy`,
+              message: "movement loop policy is not supported.",
+            });
+            valid = false;
+          }
+          const verticalArc = movementRequirement.verticalArc as Record<string, unknown> | undefined;
+          if (verticalArc !== undefined && (!verticalArc || typeof verticalArc !== "object" || !isFiniteNumber(verticalArc.min) || !isFiniteNumber(verticalArc.max) || verticalArc.min > verticalArc.max)) {
+            pushIssue(issues, {
+              code: "invalid-value",
+              path: `${path}.movementRequirement.verticalArc`,
+              message: "movement vertical arc must provide finite min and max values.",
+            });
+            valid = false;
+          }
+        }
+      } else if (professionalMode) {
+        pushIssue(issues, {
+          code: "required",
+          path: `${path}.movementRequirement`,
+          message: "professional animation beats must declare movement requirements.",
+        });
+        valid = false;
+      }
+
+      if (professionalMode && typeof beatValue.clipId === "string" && clipIds.has(beatValue.clipId)) {
+        const clip = clipById.get(beatValue.clipId);
+        const profile = clip?.movementProfile as Record<string, unknown> | undefined;
+        const requirementKind = movementRequirement?.kind;
+        const movesThroughWorld = requirementKind === "travel" || requirementKind === "jump" || requirementKind === "root-authored";
+        if (movesThroughWorld) {
+          if (beatValue.rootMotion !== "force-root-motion" && beatValue.rootMotion !== "root-authored") {
+            pushIssue(issues, {
+              code: "invalid-value",
+              path: `${path}.rootMotion`,
+              message: "professional travel beats must use force-root-motion or root-authored.",
+            });
+            valid = false;
+          }
+          if (clip?.rootTranslation !== true || (profile?.motionMode !== "root-authored" && profile?.motionMode !== "jump")) {
+            pushIssue(issues, {
+              code: "invalid-value",
+              path: `${path}.clipId`,
+              message: "professional travel beats require a root-motion clip profile.",
+            });
+            valid = false;
+          }
+          if (profile?.footSlideTolerancePassed === false) {
+            pushIssue(issues, {
+              code: "invalid-value",
+              path: `${path}.clipId`,
+              message: "professional travel beats cannot use clips that fail foot-slide tolerance.",
+            });
+            valid = false;
+          }
+        }
+        if (requirementKind === "stationary" && profile?.worldDisplacementAllowed === true) {
+          pushIssue(issues, {
+            code: "invalid-value",
+            path: `${path}.clipId`,
+            message: "stationary professional beats cannot use clips that allow world displacement.",
+          });
+          valid = false;
+        }
+      }
+
       const blend = beatValue.blend as Record<string, unknown>;
       if (!blend || typeof blend !== "object") {
         pushIssue(issues, {
@@ -627,40 +888,66 @@ export function validateSceneAnimationAdventureManifest(
       valid = false;
     }
 
-    const requiredBezier = [0.22, 0.61, 0.36, 1];
-    if (
-      !Array.isArray(camera.cubicBezier) ||
-      camera.cubicBezier.length !== 4 ||
-      camera.cubicBezier.some((axis, index) => !isFiniteNumber(axis) || axis !== requiredBezier[index])
-    ) {
-      pushIssue(issues, {
-        code: "invalid-value",
-        path: "$.camera.cubicBezier",
-        message: "cubicBezier must equal [0.22, 0.61, 0.36, 1] for v1.",
-      });
-      valid = false;
-    }
-
-    if (camera.lagMs !== 240) {
-      pushIssue(issues, {
-        code: "invalid-value",
-        path: "$.camera.lagMs",
-        message: "lagMs must equal 240 for v1.",
-      });
-      valid = false;
-    }
-
-    if (camera.lookAheadMs !== 320) {
-      pushIssue(issues, {
-        code: "invalid-value",
-        path: "$.camera.lookAheadMs",
-        message: "lookAheadMs must equal 320 for v1.",
-      });
-      valid = false;
-    }
-
     if (!validateVector3(camera.offset, "$.camera.offset", issues)) {
       valid = false;
+    }
+
+    if (!professionalMode && camera.mode !== "cinematic-follow") {
+      const requiredBezier = [0.22, 0.61, 0.36, 1];
+      if (
+        !Array.isArray(camera.cubicBezier) ||
+        camera.cubicBezier.length !== 4 ||
+        camera.cubicBezier.some((axis, index) => !isFiniteNumber(axis) || axis !== requiredBezier[index])
+      ) {
+        pushIssue(issues, {
+          code: "invalid-value",
+          path: "$.camera.cubicBezier",
+          message: "cubicBezier must equal [0.22, 0.61, 0.36, 1] for v1.",
+        });
+        valid = false;
+      }
+
+      if (camera.lagMs !== 240) {
+        pushIssue(issues, {
+          code: "invalid-value",
+          path: "$.camera.lagMs",
+          message: "lagMs must equal 240 for v1.",
+        });
+        valid = false;
+      }
+
+      if (camera.lookAheadMs !== 320) {
+        pushIssue(issues, {
+          code: "invalid-value",
+          path: "$.camera.lookAheadMs",
+          message: "lookAheadMs must equal 320 for v1.",
+        });
+        valid = false;
+      }
+    }
+
+    if (professionalMode) {
+      if (camera.mode !== "cinematic-follow") {
+        pushIssue(issues, {
+          code: "invalid-value",
+          path: "$.camera.mode",
+          message: "professional WebGPU animation manifests must use cinematic-follow.",
+        });
+        valid = false;
+      }
+      if (!validateVector3(camera.shoulderOffset, "$.camera.shoulderOffset", issues)) {
+        valid = false;
+      }
+      for (const key of ["velocityLookAheadMs", "yawSmoothingMs", "pitchSmoothingMs", "deadZoneRadius", "maxLagDistance"] as const) {
+        if (!isFiniteNumber(camera[key]) || camera[key] <= 0) {
+          pushIssue(issues, {
+            code: "invalid-value",
+            path: `$.camera.${key}`,
+            message: "cinematic camera values must be positive finite numbers.",
+          });
+          valid = false;
+        }
+      }
     }
   }
 
@@ -721,6 +1008,189 @@ export function validateSceneAnimationAdventureManifest(
         if (!validateEnum(kind, PROP_KINDS, `$.props.kinds[${index}]`, issues, "prop kind")) {
           valid = false;
         }
+      }
+    }
+  }
+
+  const environmentAssetIds = new Set<string>();
+  if (value.environmentAssets !== undefined) {
+    if (!Array.isArray(value.environmentAssets) || value.environmentAssets.length === 0) {
+      pushIssue(issues, {
+        code: "required",
+        path: "$.environmentAssets",
+        message: "environmentAssets must include at least one asset when provided.",
+      });
+      valid = false;
+    } else {
+      for (const [index, asset] of value.environmentAssets.entries()) {
+        const assetValue = asset as Record<string, unknown>;
+        const path = `$.environmentAssets[${index}]`;
+        if (!assetValue || typeof assetValue !== "object") {
+          pushIssue(issues, {
+            code: "required",
+            path,
+            message: "Expected an environment asset.",
+          });
+          valid = false;
+          continue;
+        }
+        if (validateKebabId(assetValue.id, `${path}.id`, issues)) {
+          if (environmentAssetIds.has(assetValue.id)) {
+            pushIssue(issues, {
+              code: "duplicate-id",
+              path: `${path}.id`,
+              message: `Duplicate environment asset '${assetValue.id}' is not allowed.`,
+            });
+            valid = false;
+          }
+          environmentAssetIds.add(assetValue.id);
+        } else {
+          valid = false;
+        }
+        if (typeof assetValue.kind !== "string" || !ENVIRONMENT_ASSET_KINDS.has(assetValue.kind)) {
+          pushIssue(issues, {
+            code: "invalid-value",
+            path: `${path}.kind`,
+            message: "environment asset kind is not supported.",
+          });
+          valid = false;
+        }
+        if (typeof assetValue.url !== "string" || assetValue.url.trim().length === 0) {
+          pushIssue(issues, {
+            code: "invalid-type",
+            path: `${path}.url`,
+            message: "environment asset url must be a non-empty string.",
+          });
+          valid = false;
+        }
+        for (const key of ["textureRequired", "normalTextureRequired", "groundLocked"] as const) {
+          if (!validateOptionalBoolean(assetValue[key], `${path}.${key}`, issues)) {
+            valid = false;
+          }
+        }
+      }
+    }
+  } else if (professionalMode) {
+    pushIssue(issues, {
+      code: "required",
+      path: "$.environmentAssets",
+      message: "professional WebGPU animation manifests must declare textured environment assets.",
+    });
+    valid = false;
+  }
+
+  if (value.environmentInstances !== undefined) {
+    if (!Array.isArray(value.environmentInstances)) {
+      pushIssue(issues, {
+        code: "invalid-type",
+        path: "$.environmentInstances",
+        message: "environmentInstances must be an array.",
+      });
+      valid = false;
+    } else {
+      const instanceIds = new Set<string>();
+      for (const [index, instance] of value.environmentInstances.entries()) {
+        const instanceValue = instance as Record<string, unknown>;
+        const path = `$.environmentInstances[${index}]`;
+        if (!instanceValue || typeof instanceValue !== "object") {
+          pushIssue(issues, {
+            code: "required",
+            path,
+            message: "Expected an environment instance.",
+          });
+          valid = false;
+          continue;
+        }
+        if (validateKebabId(instanceValue.id, `${path}.id`, issues)) {
+          if (instanceIds.has(instanceValue.id)) {
+            pushIssue(issues, {
+              code: "duplicate-id",
+              path: `${path}.id`,
+              message: `Duplicate environment instance '${instanceValue.id}' is not allowed.`,
+            });
+            valid = false;
+          }
+          instanceIds.add(instanceValue.id);
+        } else {
+          valid = false;
+        }
+        if (!validateKebabId(instanceValue.assetId, `${path}.assetId`, issues)) {
+          valid = false;
+        } else if (environmentAssetIds.size > 0 && !environmentAssetIds.has(instanceValue.assetId)) {
+          pushIssue(issues, {
+            code: "missing-reference",
+            path: `${path}.assetId`,
+            message: `environment instance assetId '${instanceValue.assetId}' is not declared in environmentAssets.`,
+          });
+          valid = false;
+        }
+        if (!validateVector3(instanceValue.position, `${path}.position`, issues)) {
+          valid = false;
+        }
+        if (instanceValue.rotation !== undefined && !validateVector3(instanceValue.rotation, `${path}.rotation`, issues)) {
+          valid = false;
+        }
+        if (instanceValue.scale !== undefined && !validateVector3(instanceValue.scale, `${path}.scale`, issues)) {
+          valid = false;
+        }
+      }
+    }
+  } else if (professionalMode) {
+    pushIssue(issues, {
+      code: "required",
+      path: "$.environmentInstances",
+      message: "professional WebGPU animation manifests must declare deterministic environment instances.",
+    });
+    valid = false;
+  }
+
+  const qualityGates = value.qualityGates as Record<string, unknown> | undefined;
+  if (qualityGates !== undefined) {
+    if (!qualityGates || typeof qualityGates !== "object") {
+      pushIssue(issues, {
+        code: "invalid-type",
+        path: "$.qualityGates",
+        message: "qualityGates must be an object.",
+      });
+      valid = false;
+    } else {
+      if (!Number.isInteger(qualityGates.minCharacterTextureCount) || (qualityGates.minCharacterTextureCount as number) < 1) {
+        pushIssue(issues, {
+          code: "invalid-value",
+          path: "$.qualityGates.minCharacterTextureCount",
+          message: "qualityGates minCharacterTextureCount must be a positive integer.",
+        });
+        valid = false;
+      }
+      for (const key of ["requireNormalTexture", "requireSkinnedCharacter", "requireTexturedEnvironment", "disallowProxyRenderer", "requireShadows"] as const) {
+        if (!validateOptionalBoolean(qualityGates[key], `$.qualityGates.${key}`, issues)) {
+          valid = false;
+        }
+      }
+    }
+  } else if (professionalMode) {
+    pushIssue(issues, {
+      code: "required",
+      path: "$.qualityGates",
+      message: "professional WebGPU animation manifests must declare quality gates.",
+    });
+    valid = false;
+  }
+
+  if (professionalMode && qualityGates) {
+    for (const [key, expected] of [
+      ["requireNormalTexture", true],
+      ["requireSkinnedCharacter", true],
+      ["requireTexturedEnvironment", true],
+      ["disallowProxyRenderer", true],
+    ] as const) {
+      if (qualityGates[key] !== expected) {
+        pushIssue(issues, {
+          code: "invalid-value",
+          path: `$.qualityGates.${key}`,
+          message: "professional WebGPU animation manifests must enable required quality gates.",
+        });
+        valid = false;
       }
     }
   }

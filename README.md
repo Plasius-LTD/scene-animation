@@ -15,6 +15,7 @@ This package follows site-side rollout control:
 
 - `scene.animation.palette-loader.enabled`
 - `gpu-demo.animation-adventure.enabled`
+- `gpu-demo.animation-adventure.professional.enabled`
 
 ## Package exports
 
@@ -23,6 +24,9 @@ This package follows site-side rollout control:
 - playback state validation/factories
 - adventure playback contracts for scripted beats, root/path motion policy,
   bezier-lag camera follow rigs, and deterministic prop layouts
+- professional adventure contracts for WebGPU PBR rendering, root-motion-only
+  travel, cinematic follow cameras, textured environment assets, movement
+  profiles, movement requirements, and quality gates that reject proxy renderers
 
 ## Development
 

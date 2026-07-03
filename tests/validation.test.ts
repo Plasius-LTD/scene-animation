@@ -3,6 +3,7 @@ import {
   SCENE_ANIMATION_PALETTE_LOADER_FLAG_ID,
   SCENE_ANIMATION_ADVENTURE_FLAG_ID,
   SCENE_ANIMATION_ADVENTURE_SCHEMA_VERSION,
+  SCENE_ANIMATION_PROFESSIONAL_ADVENTURE_FLAG_ID,
   SCENE_ANIMATION_SCHEMA_VERSION,
   createSceneAnimationAdventureManifest,
   createSceneAnimationManifest,
@@ -103,6 +104,115 @@ const farmAdventureManifest: SceneAnimationAdventureManifest = {
   },
 };
 
+const rootMotionProfile = {
+  motionMode: "root-authored" as const,
+  rootTranslationDistance: 2.4,
+  durationMs: 1200,
+  expectedSpeed: 2,
+  strideLength: 1.2,
+  footContactWindows: [
+    { startMs: 120, endMs: 260, foot: "left" as const },
+    { startMs: 680, endMs: 820, foot: "right" as const },
+  ],
+  verticalBounds: { min: 0, max: 0.08 },
+  loopable: true,
+  worldDisplacementAllowed: true,
+  footSlideTolerancePassed: true,
+};
+
+const stationaryProfile = {
+  motionMode: "stationary" as const,
+  rootTranslationDistance: 0,
+  durationMs: 1200,
+  expectedSpeed: 0,
+  strideLength: 0,
+  footContactWindows: [],
+  verticalBounds: { min: 0, max: 0.05 },
+  loopable: true,
+  worldDisplacementAllowed: false,
+  footSlideTolerancePassed: true,
+};
+
+const professionalAdventureManifest: SceneAnimationAdventureManifest = {
+  ...farmAdventureManifest,
+  renderMode: "webgpu-pbr",
+  motionPolicy: "root-motion-required",
+  clips: [
+    {
+      id: "female-basic-locomotion-idle",
+      category: "idle",
+      rootTranslation: false,
+      movementProfile: stationaryProfile,
+    },
+    {
+      id: "female-basic-locomotion-walking",
+      category: "locomotion",
+      rootTranslation: true,
+      movementProfile: rootMotionProfile,
+    },
+  ],
+  beats: [
+    {
+      ...farmAdventureManifest.beats[0]!,
+      movementRequirement: { kind: "stationary" },
+    },
+    {
+      ...farmAdventureManifest.beats[1]!,
+      rootMotion: "force-root-motion",
+      movementRequirement: {
+        kind: "travel",
+        distanceMeters: 2.4,
+        directionToleranceDegrees: 12,
+        minSpeed: 1.5,
+        maxSpeed: 2.4,
+        loopPolicy: "loop-to-distance",
+      },
+    },
+  ],
+  camera: {
+    mode: "cinematic-follow",
+    cubicBezier: [0.22, 0.61, 0.36, 1],
+    lagMs: 240,
+    lookAheadMs: 320,
+    offset: [0, 2.4, 5.5],
+    shoulderOffset: [-0.9, 2.2, 4.8],
+    velocityLookAheadMs: 420,
+    yawSmoothingMs: 180,
+    pitchSmoothingMs: 240,
+    deadZoneRadius: 0.4,
+    maxLagDistance: 2.8,
+  },
+  environmentAssets: [
+    {
+      id: "farm-terrain",
+      kind: "terrain",
+      url: "/gpu-demo/animation-environment/farm-terrain.glb",
+      textureRequired: true,
+      normalTextureRequired: true,
+      groundLocked: true,
+    },
+    {
+      id: "crop-row-asset",
+      kind: "crop-row",
+      url: "/gpu-demo/animation-environment/crop-row.glb",
+      textureRequired: true,
+      groundLocked: true,
+    },
+  ],
+  environmentInstances: [
+    { id: "terrain-main", assetId: "farm-terrain", position: [0, 0, 0] },
+    { id: "crop-row-a", assetId: "crop-row-asset", position: [3, 0, 1], scale: [1, 1, 1] },
+  ],
+  qualityGates: {
+    minCharacterTextureCount: 2,
+    requireNormalTexture: true,
+    requireSkinnedCharacter: true,
+    requireTexturedEnvironment: true,
+    disallowProxyRenderer: true,
+    requireShadows: true,
+  },
+};
+
 describe("scene animation manifest validation", () => {
   it("accepts valid manifests", () => {
     const result = validateSceneAnimationManifest(baseManifest);
@@ -119,6 +229,12 @@ describe("scene animation manifest validation", () => {
   it("exports animation adventure rollout flag", () => {
     expect(SCENE_ANIMATION_ADVENTURE_FLAG_ID).toBe(
       "gpu-demo.animation-adventure.enabled",
+    );
+  });
+
+  it("exports professional animation adventure rollout flag", () => {
+    expect(SCENE_ANIMATION_PROFESSIONAL_ADVENTURE_FLAG_ID).toBe(
+      "gpu-demo.animation-adventure.professional.enabled",
     );
   });
 
@@ -424,6 +540,119 @@ describe("scene animation adventure manifest validation", () => {
         lagMs: 240,
         lookAheadMs: 320,
       }),
+    );
+  });
+
+  it("accepts the professional WebGPU farm adventure contract", () => {
+    const result = validateSceneAnimationAdventureManifest(professionalAdventureManifest);
+
+    expect(result.valid).toBe(true);
+    expect(result.value).toEqual(
+      expect.objectContaining({
+        renderMode: "webgpu-pbr",
+        motionPolicy: "root-motion-required",
+      }),
+    );
+  });
+
+  it("rejects professional manifests without required quality gates and environment assets", () => {
+    const invalid = validateSceneAnimationAdventureManifest({
+      ...professionalAdventureManifest,
+      environmentAssets: undefined,
+      environmentInstances: undefined,
+      qualityGates: {
+        minCharacterTextureCount: 0,
+        requireNormalTexture: false,
+        requireSkinnedCharacter: true,
+        requireTexturedEnvironment: false,
+        disallowProxyRenderer: false,
+      },
+    });
+
+    expect(invalid.valid).toBe(false);
+    expect(invalid.issues).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ code: "required", path: "$.environmentAssets" }),
+        expect.objectContaining({ code: "required", path: "$.environmentInstances" }),
+        expect.objectContaining({ code: "invalid-value", path: "$.qualityGates.minCharacterTextureCount" }),
+        expect.objectContaining({ code: "invalid-value", path: "$.qualityGates.requireNormalTexture" }),
+        expect.objectContaining({ code: "invalid-value", path: "$.qualityGates.requireTexturedEnvironment" }),
+        expect.objectContaining({ code: "invalid-value", path: "$.qualityGates.disallowProxyRenderer" }),
+      ]),
+    );
+  });
+
+  it("rejects professional travel beats that use calibrated in-place movement", () => {
+    const invalid = validateSceneAnimationAdventureManifest({
+      ...professionalAdventureManifest,
+      clips: [
+        professionalAdventureManifest.clips[0],
+        {
+          id: "female-basic-locomotion-walking",
+          category: "locomotion",
+          rootTranslation: false,
+          movementProfile: {
+            ...rootMotionProfile,
+            motionMode: "calibrated-in-place",
+            rootTranslationDistance: 0,
+            strideLength: 1,
+          },
+        },
+      ],
+      beats: [
+        professionalAdventureManifest.beats[0],
+        {
+          ...professionalAdventureManifest.beats[1]!,
+          rootMotion: "route-driven",
+        },
+      ],
+    });
+
+    expect(invalid.valid).toBe(false);
+    expect(invalid.issues).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ code: "invalid-value", path: "$.beats[1].rootMotion" }),
+        expect.objectContaining({ code: "invalid-value", path: "$.beats[1].clipId" }),
+      ]),
+    );
+  });
+
+  it("rejects professional stationary beats with world-displacing clips", () => {
+    const invalid = validateSceneAnimationAdventureManifest({
+      ...professionalAdventureManifest,
+      clips: [
+        {
+          ...professionalAdventureManifest.clips[0]!,
+          movementProfile: {
+            ...stationaryProfile,
+            worldDisplacementAllowed: true,
+          },
+        },
+        professionalAdventureManifest.clips[1],
+      ],
+    });
+
+    expect(invalid.valid).toBe(false);
+    expect(invalid.issues).toEqual([
+      expect.objectContaining({ code: "invalid-value", path: "$.beats[0].clipId" }),
+    ]);
+  });
+
+  it("requires cinematic camera parameters for professional manifests", () => {
+    const invalid = validateSceneAnimationAdventureManifest({
+      ...professionalAdventureManifest,
+      camera: {
+        ...farmAdventureManifest.camera,
+      },
+    });
+
+    expect(invalid.valid).toBe(false);
+    expect(invalid.issues).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ code: "invalid-value", path: "$.camera.mode" }),
+        expect.objectContaining({ code: "invalid-type", path: "$.camera.shoulderOffset" }),
+        expect.objectContaining({ code: "invalid-value", path: "$.camera.velocityLookAheadMs" }),
+      ]),
     );
   });
 

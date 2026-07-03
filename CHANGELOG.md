@@ -9,10 +9,15 @@ The format is based on **[Keep a Changelog](https://keepachangelog.com/en/1.1.0/
 ## [Unreleased]
 
 - **Added**
-  - (placeholder)
+  - Added professional Animation Adventure contracts for WebGPU PBR render mode,
+    root-motion-required playback, cinematic follow cameras, textured
+    environment assets, movement profiles, movement requirements, and runtime
+    quality gates.
 
 - **Changed**
-  - (placeholder)
+  - Tightened adventure validation so professional travel beats reject
+    calibrated in-place movement, stationary beats reject world displacement,
+    and professional manifests fail closed without textured environment assets.
 
 - **Fixed**
   - (placeholder)
