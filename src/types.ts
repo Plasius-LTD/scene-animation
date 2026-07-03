@@ -3,6 +3,8 @@ export const SCENE_ANIMATION_STATE_VERSION = "1.0.0";
 export const SCENE_ANIMATION_ADVENTURE_SCHEMA_VERSION = "1.0.0";
 export const SCENE_ANIMATION_ADVENTURE_FLAG_ID =
   "gpu-demo.animation-adventure.enabled";
+export const SCENE_ANIMATION_PROFESSIONAL_ADVENTURE_FLAG_ID =
+  "gpu-demo.animation-adventure.professional.enabled";
 export const SCENE_ANIMATION_PALETTE_LOADER_FLAG_ID =
   "scene.animation.palette-loader.enabled";
 
@@ -17,9 +19,24 @@ export type SceneAnimationAdventureBeatKind =
 export type SceneAnimationRootMotionPolicy =
   | "prefer-root-motion"
   | "force-root-motion"
+  | "root-authored"
   | "route-driven"
   | "in-place";
-export type SceneAnimationCameraFollowMode = "lagged-follow";
+export type SceneAnimationCameraFollowMode = "lagged-follow" | "cinematic-follow";
+export type SceneAnimationAdventureRenderMode = "canvas-2d" | "webgpu-pbr";
+export type SceneAnimationAdventureMotionPolicy =
+  | "legacy-compatible"
+  | "root-motion-required";
+export type SceneAnimationAdventureMovementMode =
+  | "stationary"
+  | "root-authored"
+  | "calibrated-in-place"
+  | "jump";
+export type SceneAnimationAdventureMovementRequirementKind =
+  | "stationary"
+  | "travel"
+  | "jump"
+  | "root-authored";
 export type SceneAnimationPropKind =
   | "crop-row"
   | "fence-segment"
@@ -76,6 +93,29 @@ export interface SceneAnimationAdventureClipRef {
   category: SceneAnimationAdventureBeatKind;
   url?: string;
   rootTranslation?: boolean;
+  movementProfile?: SceneAnimationAdventureMovementProfile;
+}
+
+export interface SceneAnimationAdventureFootContactWindow {
+  startMs: number;
+  endMs: number;
+  foot: "left" | "right" | "both";
+}
+
+export interface SceneAnimationAdventureMovementProfile {
+  motionMode: SceneAnimationAdventureMovementMode;
+  rootTranslationDistance: number;
+  durationMs: number;
+  expectedSpeed: number;
+  strideLength: number;
+  footContactWindows: SceneAnimationAdventureFootContactWindow[];
+  verticalBounds: {
+    min: number;
+    max: number;
+  };
+  loopable: boolean;
+  worldDisplacementAllowed: boolean;
+  footSlideTolerancePassed?: boolean;
 }
 
 export interface SceneAnimationAdventurePathPoint {
@@ -97,6 +137,7 @@ export interface SceneAnimationAdventureBeat {
   durationMs: number;
   pathPointId?: Id;
   rootMotion: SceneAnimationRootMotionPolicy;
+  movementRequirement?: SceneAnimationAdventureMovementRequirement;
   blend: SceneAnimationAdventureBlendWindow;
 }
 
@@ -106,6 +147,12 @@ export interface SceneAnimationAdventureCameraFollowRig {
   lagMs: number;
   lookAheadMs: number;
   offset: NumericVector;
+  shoulderOffset?: NumericVector;
+  velocityLookAheadMs?: number;
+  yawSmoothingMs?: number;
+  pitchSmoothingMs?: number;
+  deadZoneRadius?: number;
+  maxLagDistance?: number;
 }
 
 export interface SceneAnimationAdventurePropLayout {
@@ -117,16 +164,69 @@ export interface SceneAnimationAdventurePropLayout {
   kinds: SceneAnimationPropKind[];
 }
 
+export interface SceneAnimationAdventureMovementRequirement {
+  kind: SceneAnimationAdventureMovementRequirementKind;
+  distanceMeters?: number;
+  directionToleranceDegrees?: number;
+  minSpeed?: number;
+  maxSpeed?: number;
+  loopPolicy?: "single" | "loop-to-distance" | "clip-duration";
+  verticalArc?: {
+    min: number;
+    max: number;
+  };
+}
+
+export interface SceneAnimationAdventureEnvironmentAsset {
+  id: Id;
+  kind:
+    | "terrain"
+    | "path"
+    | "crop-row"
+    | "fence-segment"
+    | "crate"
+    | "cart"
+    | "tree"
+    | "marker"
+    | "lighting-probe";
+  url: string;
+  textureRequired: boolean;
+  normalTextureRequired?: boolean;
+  groundLocked?: boolean;
+}
+
+export interface SceneAnimationAdventureEnvironmentInstance {
+  id: Id;
+  assetId: Id;
+  position: NumericVector;
+  rotation?: NumericVector;
+  scale?: NumericVector;
+}
+
+export interface SceneAnimationAdventureQualityGates {
+  minCharacterTextureCount: number;
+  requireNormalTexture: boolean;
+  requireSkinnedCharacter: boolean;
+  requireTexturedEnvironment: boolean;
+  disallowProxyRenderer: boolean;
+  requireShadows?: boolean;
+}
+
 export interface SceneAnimationAdventureManifest {
   schemaVersion: string;
   adventureId: Id;
   characterId: Id;
   modelUrl: string;
+  renderMode?: SceneAnimationAdventureRenderMode;
+  motionPolicy?: SceneAnimationAdventureMotionPolicy;
   clips: SceneAnimationAdventureClipRef[];
   route: SceneAnimationAdventurePathPoint[];
   beats: SceneAnimationAdventureBeat[];
   camera: SceneAnimationAdventureCameraFollowRig;
   props: SceneAnimationAdventurePropLayout;
+  environmentAssets?: SceneAnimationAdventureEnvironmentAsset[];
+  environmentInstances?: SceneAnimationAdventureEnvironmentInstance[];
+  qualityGates?: SceneAnimationAdventureQualityGates;
 }
 
 export type SceneAnimationValidationCode =
