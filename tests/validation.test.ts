@@ -377,6 +377,23 @@ describe("scene animation manifest validation", () => {
     );
   });
 
+  it("rejects malformed clip identifiers", () => {
+    const invalid = validateSceneAnimationManifest({
+      ...baseManifest,
+      clips: [
+        {
+          ...baseManifest.clips[0]!,
+          id: "Bad Clip",
+        },
+      ],
+    });
+
+    expect(invalid.valid).toBe(false);
+    expect(invalid.issues).toEqual([
+      expect.objectContaining({ code: "invalid-id", path: "$.clips[0].id" }),
+    ]);
+  });
+
   it("requires clip frames and targets", () => {
     const invalid = validateSceneAnimationManifest({
       ...baseManifest,
@@ -824,6 +841,71 @@ describe("scene animation adventure manifest validation", () => {
       expect.arrayContaining([
         expect.objectContaining({ code: "invalid-type", path: "$.environmentInstances" }),
         expect.objectContaining({ code: "invalid-type", path: "$.qualityGates" }),
+      ]),
+    );
+  });
+
+  it("reports remaining professional invalid-id and missing-gate branches", () => {
+    const invalid = validateSceneAnimationAdventureManifest({
+      ...professionalAdventureManifest,
+      clips: [
+        professionalAdventureManifest.clips[0]!,
+        {
+          ...professionalAdventureManifest.clips[1]!,
+          movementProfile: {
+            ...rootMotionProfile,
+            motionMode: "swim",
+            footSlideTolerancePassed: false,
+          },
+        },
+      ],
+      route: [
+        professionalAdventureManifest.route[0]!,
+        {
+          ...professionalAdventureManifest.route[1]!,
+          id: "Bad Point",
+        },
+      ],
+      beats: [
+        {
+          ...professionalAdventureManifest.beats[0]!,
+          id: "Bad Beat",
+          pathPointId: "Bad Point",
+          movementRequirement: {
+            kind: "swim",
+          },
+        },
+        professionalAdventureManifest.beats[1]!,
+      ],
+      environmentAssets: [
+        {
+          ...professionalAdventureManifest.environmentAssets![0]!,
+          id: "Bad Asset",
+        },
+      ],
+      environmentInstances: [
+        {
+          ...professionalAdventureManifest.environmentInstances![0]!,
+          id: "Bad Instance",
+          assetId: "Bad Asset",
+        },
+      ],
+      qualityGates: undefined,
+    } as unknown as SceneAnimationAdventureManifest);
+
+    expect(invalid.valid).toBe(false);
+    expect(invalid.issues).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ code: "invalid-value", path: "$.clips[1].movementProfile.motionMode" }),
+        expect.objectContaining({ code: "invalid-id", path: "$.route[1].id" }),
+        expect.objectContaining({ code: "invalid-id", path: "$.beats[0].id" }),
+        expect.objectContaining({ code: "invalid-id", path: "$.beats[0].pathPointId" }),
+        expect.objectContaining({ code: "invalid-value", path: "$.beats[0].movementRequirement.kind" }),
+        expect.objectContaining({ code: "invalid-value", path: "$.beats[1].clipId" }),
+        expect.objectContaining({ code: "invalid-id", path: "$.environmentAssets[0].id" }),
+        expect.objectContaining({ code: "invalid-id", path: "$.environmentInstances[0].id" }),
+        expect.objectContaining({ code: "invalid-id", path: "$.environmentInstances[0].assetId" }),
+        expect.objectContaining({ code: "required", path: "$.qualityGates" }),
       ]),
     );
   });
