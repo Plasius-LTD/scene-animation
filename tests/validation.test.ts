@@ -656,6 +656,178 @@ describe("scene animation adventure manifest validation", () => {
     );
   });
 
+  it("reports malformed professional movement, environment, and quality gate fields", () => {
+    const invalid = validateSceneAnimationAdventureManifest({
+      ...professionalAdventureManifest,
+      renderMode: "webgpu-pbr",
+      motionPolicy: "legacy-compatible",
+      clips: [
+        {
+          id: "Bad Clip",
+          category: "idle",
+          rootTranslation: "yes",
+          movementProfile: null,
+        },
+        {
+          id: "female-basic-locomotion-walking",
+          category: "locomotion",
+          rootTranslation: true,
+          movementProfile: {
+            motionMode: "root-authored",
+            rootTranslationDistance: Number.NaN,
+            durationMs: -1,
+            expectedSpeed: -1,
+            strideLength: -1,
+            loopable: "yes",
+            worldDisplacementAllowed: "yes",
+            footSlideTolerancePassed: "yes",
+            verticalBounds: { min: 2, max: 1 },
+            footContactWindows: "none",
+          },
+        },
+        {
+          id: "missing-profile",
+          category: "idle",
+        },
+      ],
+      beats: [
+        {
+          ...professionalAdventureManifest.beats[0]!,
+          clipId: "Bad Clip",
+          movementRequirement: null,
+        },
+        {
+          ...professionalAdventureManifest.beats[1]!,
+          clipId: "female-basic-locomotion-walking",
+          movementRequirement: {
+            kind: "travel",
+            distanceMeters: -1,
+            directionToleranceDegrees: -1,
+            minSpeed: -1,
+            maxSpeed: -1,
+            loopPolicy: "forever",
+            verticalArc: { min: 2, max: 1 },
+          },
+        },
+        {
+          id: "missing-requirement",
+          order: 2,
+          kind: "idle",
+          clipId: "missing-profile",
+          durationMs: 1000,
+          rootMotion: "in-place",
+          blend: { inMs: 0, outMs: 0 },
+        },
+      ],
+      environmentAssets: [
+        null,
+        {
+          id: "farm-terrain",
+          kind: "terrain",
+          url: "/gpu-demo/animation-environment/farm-terrain.glb",
+        },
+        {
+          id: "farm-terrain",
+          kind: "bad-kind",
+          url: " ",
+          textureRequired: "yes",
+          normalTextureRequired: "yes",
+          groundLocked: "yes",
+        },
+      ],
+      environmentInstances: [
+        null,
+        {
+          id: "terrain-main",
+          assetId: "farm-terrain",
+          position: [0, 0, 0],
+        },
+        {
+          id: "terrain-main",
+          assetId: "missing-asset",
+          position: [0, Number.NaN, 0],
+          rotation: [0, 0],
+          scale: [1, 1],
+        },
+      ],
+      qualityGates: {
+        minCharacterTextureCount: 1,
+        requireNormalTexture: "yes",
+        requireSkinnedCharacter: true,
+        requireTexturedEnvironment: true,
+        disallowProxyRenderer: true,
+        requireShadows: "yes",
+      },
+    } as unknown as SceneAnimationAdventureManifest);
+
+    expect(invalid.valid).toBe(false);
+    expect(invalid.issues).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ code: "invalid-value", path: "$.motionPolicy" }),
+        expect.objectContaining({ code: "invalid-id", path: "$.clips[0].id" }),
+        expect.objectContaining({ code: "invalid-type", path: "$.clips[0].rootTranslation" }),
+        expect.objectContaining({ code: "invalid-type", path: "$.clips[0].movementProfile" }),
+        expect.objectContaining({ code: "invalid-value", path: "$.clips[1].movementProfile.rootTranslationDistance" }),
+        expect.objectContaining({ code: "invalid-type", path: "$.clips[1].movementProfile.loopable" }),
+        expect.objectContaining({ code: "invalid-type", path: "$.clips[1].movementProfile.worldDisplacementAllowed" }),
+        expect.objectContaining({ code: "invalid-type", path: "$.clips[1].movementProfile.footSlideTolerancePassed" }),
+        expect.objectContaining({ code: "invalid-value", path: "$.clips[1].movementProfile.verticalBounds" }),
+        expect.objectContaining({ code: "invalid-type", path: "$.clips[1].movementProfile.footContactWindows" }),
+        expect.objectContaining({ code: "required", path: "$.clips[2].movementProfile" }),
+        expect.objectContaining({ code: "invalid-type", path: "$.beats[0].movementRequirement" }),
+        expect.objectContaining({ code: "invalid-value", path: "$.beats[1].movementRequirement.distanceMeters" }),
+        expect.objectContaining({ code: "invalid-value", path: "$.beats[1].movementRequirement.loopPolicy" }),
+        expect.objectContaining({ code: "invalid-value", path: "$.beats[1].movementRequirement.verticalArc" }),
+        expect.objectContaining({ code: "required", path: "$.beats[2].movementRequirement" }),
+        expect.objectContaining({ code: "required", path: "$.environmentAssets[0]" }),
+        expect.objectContaining({ code: "duplicate-id", path: "$.environmentAssets[2].id" }),
+        expect.objectContaining({ code: "invalid-value", path: "$.environmentAssets[2].kind" }),
+        expect.objectContaining({ code: "invalid-type", path: "$.environmentAssets[2].url" }),
+        expect.objectContaining({ code: "invalid-type", path: "$.environmentAssets[2].textureRequired" }),
+        expect.objectContaining({ code: "required", path: "$.environmentInstances[0]" }),
+        expect.objectContaining({ code: "duplicate-id", path: "$.environmentInstances[2].id" }),
+        expect.objectContaining({ code: "missing-reference", path: "$.environmentInstances[2].assetId" }),
+        expect.objectContaining({ code: "invalid-type", path: "$.environmentInstances[2].position" }),
+        expect.objectContaining({ code: "invalid-type", path: "$.environmentInstances[2].rotation" }),
+        expect.objectContaining({ code: "invalid-type", path: "$.environmentInstances[2].scale" }),
+        expect.objectContaining({ code: "invalid-type", path: "$.qualityGates.requireNormalTexture" }),
+        expect.objectContaining({ code: "invalid-type", path: "$.qualityGates.requireShadows" }),
+      ]),
+    );
+  });
+
+  it("rejects unsupported professional render and motion policy values", () => {
+    const invalid = validateSceneAnimationAdventureManifest({
+      ...farmAdventureManifest,
+      renderMode: "sprites",
+      motionPolicy: "teleport",
+    } as unknown as SceneAnimationAdventureManifest);
+
+    expect(invalid.valid).toBe(false);
+    expect(invalid.issues).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ code: "invalid-value", path: "$.renderMode" }),
+        expect.objectContaining({ code: "invalid-value", path: "$.motionPolicy" }),
+      ]),
+    );
+  });
+
+  it("rejects non-array environment instances and non-object quality gates", () => {
+    const invalid = validateSceneAnimationAdventureManifest({
+      ...professionalAdventureManifest,
+      environmentInstances: "instances",
+      qualityGates: "strict",
+    } as unknown as SceneAnimationAdventureManifest);
+
+    expect(invalid.valid).toBe(false);
+    expect(invalid.issues).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ code: "invalid-type", path: "$.environmentInstances" }),
+        expect.objectContaining({ code: "invalid-type", path: "$.qualityGates" }),
+      ]),
+    );
+  });
+
   it("creates canonical adventure manifests", () => {
     const created = createSceneAnimationAdventureManifest(farmAdventureManifest);
 
