@@ -3,20 +3,15 @@ name: CI
 on:
   push:
     branches: [main]
-  pull_request:
-    branches: [main]
-
 permissions:
   actions: read
   contents: read
 
-env:
-  FALLBACK_RUNNER_LABEL: ubuntu-latest
-  SELF_HOSTED_RUNNER_LABELS: '["self-hosted","Linux","X64"]'
-
 jobs:
   build-test:
-    runs-on: ${{ fromJSON(github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository && '"ubuntu-latest"' || vars.CI_RUNNER_LABELS || '["self-hosted","Linux","X64"]') }}
+    runs-on: [self-hosted, Linux, X64]
+    env:
+      CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
     steps:
       - uses: actions/checkout@v4
 
@@ -89,3 +84,13 @@ jobs:
             echo "Coverage gate failed: ${PCT}% < 80%"
             exit 1
           }
+
+      - name: Upload coverage to Codecov
+        if: ${{ env.CODECOV_TOKEN != '' }}
+        uses: codecov/codecov-action@v4
+        with:
+          token: ${{ env.CODECOV_TOKEN }}
+          files: ${{ env.LCOV_FILE }}
+          flags: unittests
+          fail_ci_if_error: true
+          slug: ${{ github.repository }}
