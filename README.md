@@ -1,5 +1,13 @@
 # @plasius/scene-animation
 
+[![npm version](https://img.shields.io/npm/v/@plasius/scene-animation.svg)](https://www.npmjs.com/package/@plasius/scene-animation)
+[![Build Status](https://img.shields.io/github/actions/workflow/status/Plasius-LTD/scene-animation/ci.yml?branch=main&label=build&style=flat)](https://github.com/Plasius-LTD/scene-animation/actions/workflows/ci.yml)
+[![coverage](https://img.shields.io/codecov/c/github/Plasius-LTD/scene-animation)](https://codecov.io/gh/Plasius-LTD/scene-animation)
+[![License](https://img.shields.io/github/license/Plasius-LTD/scene-animation)](./LICENSE)
+[![Code of Conduct](https://img.shields.io/badge/code%20of%20conduct-yes-blue.svg)](./CODE_OF_CONDUCT.md)
+[![Security Policy](https://img.shields.io/badge/security%20policy-yes-orange.svg)](./SECURITY.md)
+[![Changelog](https://img.shields.io/badge/changelog-md-blue.svg)](./CHANGELOG.md)
+
 Reusable contracts for scene animation clip manifests, palette structure, and playback states.
 It also exposes the v1 farm-adventure playback manifest used by GPU demos.
 
