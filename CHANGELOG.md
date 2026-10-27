@@ -8,6 +8,20 @@ The format is based on **[Keep a Changelog](https://keepachangelog.com/en/1.1.0/
 
 ## [Unreleased]
 
+- **Added**
+  - (placeholder)
+
+- **Changed**
+  - (placeholder)
+
+- **Fixed**
+  - (placeholder)
+
+- **Security**
+  - (placeholder)
+
+## [0.1.14] - 2026-10-27
+
 - Restore trusted push-only self-hosted CI on the approved quarantined runner group, with strict installs, bounded jobs, non-persistent checkout credentials and final package admission.
 
 - **Added**
@@ -211,7 +225,7 @@ The format is based on **[Keep a Changelog](https://keepachangelog.com/en/1.1.0/
 
 ---
 
-[Unreleased]: https://github.com/Plasius-LTD/scene-animation/compare/v0.1.13...HEAD
+[Unreleased]: https://github.com/Plasius-LTD/scene-animation/compare/v0.1.14...HEAD
 
 
 [0.1.3]: https://github.com/Plasius-LTD/scene-animation/releases/tag/v0.1.3
@@ -225,3 +239,4 @@ The format is based on **[Keep a Changelog](https://keepachangelog.com/en/1.1.0/
 [0.1.11]: https://github.com/Plasius-LTD/scene-animation/releases/tag/v0.1.11
 [0.1.12]: https://github.com/Plasius-LTD/scene-animation/releases/tag/v0.1.12
 [0.1.13]: https://github.com/Plasius-LTD/scene-animation/releases/tag/v0.1.13
+[0.1.14]: https://github.com/Plasius-LTD/scene-animation/releases/tag/v0.1.14
